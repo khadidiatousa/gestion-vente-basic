@@ -5,6 +5,8 @@ import os
 import hashlib
 from datetime import datetime
 
+from app import get_db_connection
+
 # --- CONFIG ---
 st.set_page_config(page_title="Gestion des ventes", page_icon="✨")
 
@@ -55,6 +57,7 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 # --- ADMIN PAR DEFAUT ---
+# --- ADMIN PAR DEFAUT ---
 def create_default_admin():
     c.execute("SELECT * FROM users WHERE is_admin=1")
     if not c.fetchone():
@@ -65,7 +68,6 @@ def create_default_admin():
         conn.commit()
 
 create_default_admin()
-
 # --- SESSION ---
 if "user" not in st.session_state:
     st.session_state.user = None
