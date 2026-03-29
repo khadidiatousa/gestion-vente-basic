@@ -1,17 +1,18 @@
 # app.py
 import io
-
-import streamlit as st
+import os
 import sqlite3
 import hashlib
-import os
-from fpdf import FPDF
 from datetime import datetime
+
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 from PIL import Image
+from fpdf import FPDF
 
-from database import login_user
+from database import login_user  # Assurez-vous que database.py existe avec login_user()
+
 
 # --- CONFIGURATION PAGE ---
 st.set_page_config(
@@ -20,12 +21,9 @@ st.set_page_config(
     page_icon="✨",
     initial_sidebar_state="collapsed"
 )
-# --- CLASSE PDF PERSONNALISÉE ---
-from fpdf import FPDF
-from datetime import datetime
 
 
-# 🔹 Fonction de nettoyage (TRÈS IMPORTANT)
+# 🔹 Fonction de nettoyage texte
 def safe_text(text):
     if not text:
         return ""
@@ -44,11 +42,11 @@ def safe_text(text):
     )
 
 
+# --- CLASSE PDF PERSONNALISÉE ---
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 16)
         self.cell(0, 10, safe_text("GLOW ESSENTIALS"), 0, 1, 'C')
-
         self.set_font('Arial', 'I', 10)
         self.cell(0, 5, safe_text("Catalogue de produits"), 0, 1, 'C')
         self.ln(5)
@@ -62,16 +60,12 @@ class PDF(FPDF):
 def generate_catalog_pdf(products, user_name):
     pdf = PDF()
     pdf.add_page()
-
     pdf.set_font('Arial', 'B', 14)
     pdf.cell(0, 10, safe_text(f"Vendeur: {user_name}"), 0, 1)
     pdf.ln(5)
 
     for product in products:
-
         y_before = pdf.get_y()
-
-        # 🔹 IMAGE (CORRIGÉ)
         image_path = product.get('image', '')
 
         if image_path and os.path.exists(image_path):
@@ -80,46 +74,35 @@ def generate_catalog_pdf(products, user_name):
         else:
             pdf.set_x(10)
 
-        # 🔹 NOM
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(0, 6, safe_text(product['name']), 0, 1)
-
         pdf.set_x(45 if image_path and os.path.exists(image_path) else 10)
-
-        # 🔹 PRIX
         pdf.set_font('Arial', '', 10)
         pdf.cell(0, 5, safe_text(f"Prix: {product['price']} FCFA"), 0, 1)
-
         pdf.set_x(45 if image_path and os.path.exists(image_path) else 10)
-
-        # 🔹 STOCK
         pdf.cell(0, 5, safe_text(f"Stock: {product['stock']}"), 0, 1)
-
         pdf.set_x(45 if image_path and os.path.exists(image_path) else 10)
-
-        # 🔹 DESCRIPTION
         if product.get("description"):
             pdf.multi_cell(0, 5, safe_text(product["description"]))
-
-        # 🔹 Ajuster hauteur pour éviter chevauchement
         y_after = pdf.get_y()
         pdf.set_y(max(y_after, y_before + 35))
-
         pdf.ln(5)
-
-        # 🔹 Séparateur
         pdf.set_draw_color(200, 200, 200)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
     return pdf
+
+
 # --- BASE DE DONNÉES ---
 DB_FILE = "vendeur.db"
+
 
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def init_database():
     conn = get_db_connection()
@@ -135,8 +118,6 @@ def init_database():
         must_change_password INTEGER DEFAULT 1
     )
     """)
-
-    # Vérifier et ajouter la colonne created_at si elle n'existe pas
     c.execute("PRAGMA table_info(users)")
     columns = [col["name"] for col in c.fetchall()]
     if "created_at" not in columns:
@@ -157,8 +138,6 @@ def init_database():
         image TEXT
     )
     """)
-
-    # Vérifier et ajouter la colonne created_at si elle n'existe pas
     c.execute("PRAGMA table_info(products)")
     columns = [col["name"] for col in c.fetchall()]
     if "created_at" not in columns:
@@ -179,8 +158,6 @@ def init_database():
         date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
-
-    # Vérifier et ajouter la colonne date si elle n'existe pas (pour compatibilité)
     c.execute("PRAGMA table_info(sales)")
     columns = [col["name"] for col in c.fetchall()]
     if "date" not in columns:
@@ -198,17 +175,21 @@ def init_database():
 
     conn.close()
 
+
 # --- HASH PASSWORD ---
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-# --- FONCTIONS UTILITAIRES ---
+
+# --- UTILITAIRES ---
 def logout():
     st.session_state.clear()
     st.rerun()
 
+
 def format_price(price):
     return f"{price:,.0f} FCFA"
+
 
 # --- SESSION STATE ---
 if "user" not in st.session_state:
@@ -218,39 +199,34 @@ if "page" not in st.session_state:
 if "notifications" not in st.session_state:
     st.session_state.notifications = []
 
-# Initialisation base de données
+# Init DB
 init_database()
+
 
 # --- LOGIN SCREEN ---
 if not st.session_state.user:
     st.markdown("<h1 style='text-align:center;'>Gestion de Vente Simple </h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center;'>Votre solution bde gestion eauté </p>", unsafe_allow_html=True)
-
+    st.markdown("<p style='text-align:center;'>Votre solution de gestion complète</p>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        with st.container():
-            st.subheader("🔐 Connexion")
-            username = st.text_input("Identifiant", placeholder="Entrez votre identifiant")
-            password = st.text_input("Mot de passe", type="password", placeholder="Entrez votre mot de passe")
-
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                if st.button("Se connecter", use_container_width=True):
-                    user = login_user(username, password)
-                    if user:
-                        st.session_state.user = user
-                        st.session_state.notifications.append({
-                            "type": "success",
-                            "message": f"Bienvenue {user['username']} !"
-                        })
-                        st.rerun()
-                    else:
-                        st.error("❌ Identifiants incorrects")
-            with col_btn2:
-                if st.button("Mot de passe oublié ?", use_container_width=True):
-                    st.info("Contactez l'administrateur pour réinitialiser votre mot de passe")
-
+        st.subheader("🔐 Connexion")
+        username = st.text_input("Identifiant")
+        password = st.text_input("Mot de passe", type="password")
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("Se connecter"):
+                user = login_user(username, password)
+                if user:
+                    st.session_state.user = user
+                    st.session_state.notifications.append({"type": "success", "message": f"Bienvenue {user['username']} !"})
+                    st.rerun()
+                else:
+                    st.error("❌ Identifiants incorrects")
+        with col_btn2:
+            if st.button("Mot de passe oublié ?"):
+                st.info("Contactez l'administrateur pour réinitialiser votre mot de passe")
     st.stop()
+
 
 # --- UTILISATEUR CONNECTÉ ---
 user = st.session_state.user
@@ -258,21 +234,12 @@ user = st.session_state.user
 # --- HEADER ---
 col_logo, col_user, col_logout = st.columns([2, 1, 1])
 with col_logo:
-    st.markdown("<h1 style='margin: 0;'>Gestin de Vente </h1>", unsafe_allow_html=True)
-
+    st.markdown("<h1 style='margin:0;'>Gestion de Vente</h1>", unsafe_allow_html=True)
 with col_user:
-    st.markdown(f"""
-    <div style="text-align: right; padding: 10px;">
-        <span style="font-weight: bold;">👤 {user['username']}</span>
-        <br>
-        <span style="font-size: 12px;">{'Administrateur' if user['is_admin'] else 'Vendeur'}</span>
-    </div>
-    """, unsafe_allow_html=True)
-
+    st.markdown(f"<div style='text-align:right;'>👤 {user['username']}<br><span style='font-size:12px;'>{'Administrateur' if user['is_admin'] else 'Vendeur'}</span></div>", unsafe_allow_html=True)
 with col_logout:
-    if st.button("🚪 Déconnexion", use_container_width=True):
+    if st.button("🚪 Déconnexion"):
         logout()
-
 st.markdown("---")
 
 
@@ -282,22 +249,16 @@ nav_items = [
     {"name": "Catalogue", "icon": "📦", "admin_only": False},
     {"name": "Ventes", "icon": "🛒", "admin_only": False},
     {"name": "Rapports", "icon": "📈", "admin_only": False},
-    {"name": "Paramètres", "icon": "⚙️", "admin_only": False}  # <-- ici
+    {"name": "Paramètres", "icon": "⚙️", "admin_only": False}
 ]
-
 if user['is_admin']:
     nav_items.insert(1, {"name": "Utilisateurs", "icon": "👥", "admin_only": True})
 
-st.markdown('<div style="margin: 20px 0;">', unsafe_allow_html=True)
+st.markdown('<div style="margin:20px 0;">', unsafe_allow_html=True)
 nav_cols = st.columns(len(nav_items))
-
 for idx, item in enumerate(nav_items):
     with nav_cols[idx]:
-        if st.button(
-                f"{item['icon']} {item['name']}",
-                use_container_width=True,
-                type="secondary" if st.session_state.page != item['name'] else "primary"
-        ):
+        if st.button(f"{item['icon']} {item['name']}", use_container_width=True):
             st.session_state.page = item['name']
             st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
