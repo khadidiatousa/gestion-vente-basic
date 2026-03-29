@@ -642,8 +642,8 @@ elif page == "Paramètres":
     new_entreprise = st.text_input("Nom de l'entreprise", value=user.get('entreprise', ''))
     if st.button("💾 Enregistrer les informations"):
         if new_username.strip():
-            c.execute("UPDATE users SET username=%s, entreprise=%s WHERE id=%s",
-                      (new_username, new_entreprise, user['id']))
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
+            print([r[0] for r in c.fetchall()])
             conn.commit()
             st.success("Informations mises à jour")
         else:
