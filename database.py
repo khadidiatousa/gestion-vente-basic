@@ -6,25 +6,12 @@ from datetime import datetime
 import os
 
 # -------------------- CONFIG DB --------------------
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "vendeur")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
-DB_PORT = os.getenv("DB_PORT", 5432)
+DB_URL = "postgresql://postgres.tukybtlafsdgvyemawlv:12345Khadidiatou@aws-1-eu-central-1.pooler.supabase.com:6543/postgres"
 
-# -------------------- Connexion DB --------------------
+
 def get_db_connection():
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        port=DB_PORT,
-        cursor_factory=RealDictCursor
-    )
-    c = conn.cursor()
-    return conn, c
-
+    conn = psycopg2.connect(DB_URL)
+    return conn, conn.cursor(cursor_factory=RealDictCursor)
 # -------------------- Hash mot de passe --------------------
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
