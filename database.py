@@ -1,15 +1,29 @@
 # database.py
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import hashlib
 from datetime import datetime
+import os
 
-DB_FILE = "vendeur.db"
+# -------------------- CONFIG DB --------------------
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_NAME = os.getenv("DB_NAME", "vendeur")
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
+DB_PORT = os.getenv("DB_PORT", 5432)
 
 # -------------------- Connexion DB --------------------
 def get_db_connection():
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        port=DB_PORT,
+        cursor_factory=RealDictCursor
+    )
+    c = conn.cursor()
+    return conn, c
 
 # -------------------- Hash mot de passe --------------------
 def hash_password(password):
@@ -17,9 +31,8 @@ def hash_password(password):
 
 # -------------------- Login utilisateur --------------------
 def login_user(username, password):
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username=?", (username,))
+    conn, c = get_db_connection()
+    c.execute("SELECT * FROM users WHERE username=%s", (username,))
     user = c.fetchone()
     conn.close()
     if user and user["password"] == hash_password(password):
@@ -28,13 +41,12 @@ def login_user(username, password):
 
 # -------------------- Initialisation DB --------------------
 def init_database():
-    conn = get_db_connection()
-    c = conn.cursor()
+    conn, c = get_db_connection()
 
     # Table users
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         username TEXT UNIQUE,
         password TEXT,
         is_admin INTEGER DEFAULT 0,
@@ -47,8 +59,8 @@ def init_database():
     # Table products
     c.execute("""
     CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         name TEXT,
         description TEXT,
         price INTEGER,
@@ -60,9 +72,9 @@ def init_database():
     # Table sales
     c.execute("""
     CREATE TABLE IF NOT EXISTS sales (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        product_id INTEGER,
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
         product_name TEXT,
         quantity INTEGER,
         total INTEGER,
@@ -74,7 +86,7 @@ def init_database():
     c.execute("SELECT * FROM users WHERE is_admin=1")
     if not c.fetchone():
         c.execute(
-            "INSERT INTO users (username, password, is_admin, must_change_password) VALUES (?,?,?,0)",
+            "INSERT INTO users (username, password, is_admin, must_change_password) VALUES (%s,%s,%s,%s)",
             ("admin", hash_password("admin123"), 1, 0)
         )
         conn.commit()
