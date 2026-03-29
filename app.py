@@ -669,51 +669,87 @@ elif page == "Paramètres":
 
 # --- RAPPORTS ---
 elif page == "Rapports":
-    st.header("📊 Rapports détaillés")
+    st.header("📊 Rapports et Analyses")
+
     conn, c = get_db_connection()
 
-    # Ventes par mois
-    c.execute("""
-        SELECT DATE_TRUNC('month', date) AS mois, SUM(total) AS ca
-        FROM sales WHERE user_id=%s
-        GROUP BY mois ORDER BY mois
-    """, (user['id'],))
-    data = c.fetchall()
+    # --- Filtres de date et type ---
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        start_date = st.date_input("Date début", value=datetime.now().replace(day=1))
+    with col2:
+        end_date = st.date_input("Date fin", value=datetime.now())
+    with col3:
+        report_type = st.selectbox("Type de rapport", ["Ventes", "Produits", "Chiffre d'affaires"])
 
-    # Ventes par produit
-    c.execute("""
-        SELECT p.name AS produit, SUM(s.quantity) AS quantite, SUM(s.total) AS total
-        FROM sales s
-        LEFT JOIN products p ON s.product_id = p.id
-        WHERE s.user_id=%s
-        GROUP BY p.name
-        ORDER BY total DESC
-    """, (user['id'],))
-    sales_by_product = c.fetchall()
+    # --- Rapport Ventes ---
+    if report_type == "Ventes":
+        st.subheader("📊 Détail des ventes")
+        try:
+            c.execute("""
+                SELECT * FROM sales 
+                WHERE user_id=%s AND date(date) BETWEEN %s AND %s
+                ORDER BY date DESC
+            """, (user['id'], start_date, end_date))
+            sales_data = [dict(r) for r in c.fetchall()]
+
+            if sales_data:
+                df = pd.DataFrame(sales_data)
+                st.dataframe(df, use_container_width=True)
+
+                # Export CSV
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📥 Télécharger en CSV",
+                    csv,
+                    f"rapport_ventes_{start_date}_{end_date}.csv",
+                    "text/csv"
+                )
+            else:
+                st.info("Aucune donnée pour cette période")
+        except Exception as e:
+            st.error(f"Erreur lors de la génération du rapport : {e}")
+
+    # --- Rapport Produits ---
+    elif report_type == "Produits":
+        st.subheader("📦 État du stock")
+        try:
+            c.execute("SELECT * FROM products WHERE user_id=%s", (user['id'],))
+            products_data = [dict(r) for r in c.fetchall()]
+
+            if products_data:
+                df = pd.DataFrame(products_data)
+                display_df = df[['name', 'price', 'stock', 'description']].copy()
+                display_df['price'] = display_df['price'].apply(format_price)
+                st.dataframe(display_df, use_container_width=True)
+            else:
+                st.info("Aucun produit enregistré")
+        except Exception as e:
+            st.error(f"Erreur lors de la récupération des produits : {e}")
+
+    # --- Rapport Chiffre d'affaires ---
+    else:  # Chiffre d'affaires
+        st.subheader("💰 Analyse du chiffre d'affaires")
+        try:
+            c.execute("""
+                SELECT date(date) as sale_date, SUM(total) as daily_ca
+                FROM sales
+                WHERE user_id=%s AND date(date) BETWEEN %s AND %s
+                GROUP BY date(date)
+                ORDER BY date(date)
+            """, (user['id'], start_date, end_date))
+            ca_data = [dict(r) for r in c.fetchall()]
+
+            if ca_data:
+                df = pd.DataFrame(ca_data)
+                fig = px.line(df, x='sale_date', y='daily_ca', title='Évolution du chiffre d\'affaires')
+                st.plotly_chart(fig, use_container_width=True)
+
+                total_ca = df['daily_ca'].sum()
+                st.metric("Chiffre d'affaires total", format_price(total_ca))
+            else:
+                st.info("Aucune donnée pour cette période")
+        except Exception as e:
+            st.error(f"Erreur lors de l'analyse : {e}")
+
     conn.close()
-
-    # --- Graphiques ---
-    if data:
-        df_month = pd.DataFrame(data)
-        df_month['mois'] = pd.to_datetime(df_month['mois'])
-        fig_month = px.line(df_month, x='mois', y='ca', title="Chiffre d'affaires mensuel")
-        st.plotly_chart(fig_month)
-
-    if sales_by_product:
-        df_prod = pd.DataFrame(sales_by_product)
-        fig_prod = px.bar(df_prod, x='produit', y='total', title="Chiffre d'affaires par produit")
-        st.plotly_chart(fig_prod)
-
-    # --- Supprimer un mois complet ---
-    if data:
-        st.subheader("🗑️ Supprimer les ventes d'un mois")
-        for index, row in df_month.iterrows():
-            if st.button(f"Supprimer les ventes de {row['mois'].strftime('%B %Y')}", key=f"del_month_{index}"):
-                conn, c = get_db_connection()
-                start_date = row['mois'].replace(day=1)
-                end_date = (start_date + pd.offsets.MonthEnd(1)).to_pydatetime()
-                c.execute("DELETE FROM sales WHERE user_id=%s AND date >= %s AND date <= %s",
-                          (user['id'], start_date, end_date))
-                conn.commit()
-                conn.close()
-                st.warning(f"Ventes de {row['mois'].strftime('%B %Y')} supprimées")
