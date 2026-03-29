@@ -281,7 +281,8 @@ nav_items = [
     {"name": "Dashboard", "icon": "📊", "admin_only": False},
     {"name": "Catalogue", "icon": "📦", "admin_only": False},
     {"name": "Ventes", "icon": "🛒", "admin_only": False},
-    {"name": "Rapports", "icon": "📈", "admin_only": False}
+    {"name": "Rapports", "icon": "📈", "admin_only": False},
+    {"name": "Paramètres", "icon": "⚙️", "admin_only": False}  # <-- ici
 ]
 
 if user['is_admin']:
@@ -734,4 +735,60 @@ elif page == "Rapports":
 
     conn.close()
 
+# --- PAGE PARAMÈTRES ---
+elif page == "Paramètres":
+    st.header("⚙️ Paramètres")
 
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # 🔐 Changement de mot de passe
+    st.subheader("🔐 Changer le mot de passe")
+    with st.form("change_password_form"):
+        old_pwd = st.text_input("Mot de passe actuel", type="password")
+        new_pwd = st.text_input("Nouveau mot de passe", type="password")
+        confirm_pwd = st.text_input("Confirmer le nouveau mot de passe", type="password")
+        submit_pwd = st.form_submit_button("Mettre à jour le mot de passe")
+
+        if submit_pwd:
+            if len(new_pwd) < 8:
+                st.error("❌ Le mot de passe doit contenir au moins 8 caractères")
+            elif new_pwd != confirm_pwd:
+                st.error("❌ Les mots de passe ne correspondent pas")
+            else:
+                c.execute("SELECT password FROM users WHERE id=?", (user['id'],))
+                current_hashed = c.fetchone()["password"]
+                if hash_password(old_pwd) == current_hashed:
+                    c.execute("UPDATE users SET password=?, must_change_password=0 WHERE id=?",
+                              (hash_password(new_pwd), user['id']))
+                    conn.commit()
+                    st.success("✅ Mot de passe mis à jour avec succès")
+                    st.session_state.user["must_change_password"] = 0
+                    st.rerun()  # <-- pour mettre à jour la page après changement
+                else:
+                    st.error("❌ Mot de passe actuel incorrect")
+
+    # 🏢 Nom de l'entreprise
+    st.subheader("🏢 Informations de l'entreprise")
+    entreprise = st.text_input("Nom de l'entreprise", value=user.get("entreprise", ""))
+    if st.button("Sauvegarder les informations de l'entreprise"):
+        c.execute("UPDATE users SET entreprise=? WHERE id=?", (entreprise, user['id']))
+        conn.commit()
+        st.success("✅ Informations de l'entreprise mises à jour")
+        st.session_state.user["entreprise"] = entreprise
+
+    # 🔹 Logo
+    st.subheader("Logo de l'entreprise")
+    logo_file = st.file_uploader("Importer un logo (jpg/png)", type=["jpg", "jpeg", "png"])
+    if logo_file:
+        os.makedirs("logos", exist_ok=True)
+        logo_path = f"logos/{user['id']}_{logo_file.name}"
+        with open(logo_path, "wb") as f:
+            f.write(logo_file.getbuffer())
+
+        c.execute("UPDATE users SET logo=? WHERE id=?", (logo_path, user['id']))
+        conn.commit()
+        st.success("✅ Logo mis à jour")
+        st.session_state.user["logo"] = logo_path
+
+    conn.close()
