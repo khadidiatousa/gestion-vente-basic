@@ -131,6 +131,17 @@ def get_db_connection():
 def init_database():
     conn, c = get_db_connection()
 
+    # Ajout des colonnes entreprise et logo si elles n'existent pas
+    c.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS entreprise TEXT
+    """)
+
+    c.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS logo TEXT
+    """)
+
     # Table users
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
