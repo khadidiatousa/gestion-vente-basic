@@ -345,7 +345,7 @@ elif page == "Utilisateurs":
             if new_username and new_password:
                 c.execute(
                     "INSERT INTO users (username, password, is_admin) VALUES (%s, %s, %s)",
-                    (new_username, hash_password(new_password), new_role == "Admin")
+                    (new_username, hash_password(new_password), int(new_role == "Admin"))
                 )
                 conn.commit()
                 st.success(f"Utilisateur {new_username} ajouté.")
@@ -518,6 +518,102 @@ elif page == "Catalogue":
 
     conn.close()
 
+# --- VENTES ---
+elif page == "Ventes":
+    st.header("🛒 Enregistrement des ventes")
+
+    conn, c = get_db_connection()
+
+    tab1, tab2 = st.tabs(["💳 Nouvelle vente", "📜 Historique"])
+
+    # --- Nouvelle vente ---
+    with tab1:
+        c.execute("SELECT * FROM products WHERE user_id=%s AND stock>0", (user['id'],))
+        available_products = [dict(r) for r in c.fetchall()]
+
+        if available_products:
+            with st.form("sale_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    selected_product = st.selectbox(
+                        "Produit à vendre",
+                        available_products,
+                        format_func=lambda x: f"{x['name']} - {format_price(x['price'])} (Stock: {x['stock']})"
+                    )
+
+                with col2:
+                    quantity = st.number_input(
+                        "Quantité",
+                        min_value=1,
+                        max_value=selected_product['stock'],
+                        value=1
+                    )
+
+                total_price = selected_product['price'] * quantity
+                st.info(f"💰 Montant total: {format_price(total_price)}")
+
+                if st.form_submit_button("Valider la vente", use_container_width=True):
+                    try:
+                        # Insertion dans sales
+                        c.execute("""
+                            INSERT INTO sales (user_id, product_id, product_name, quantity, total) 
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            user['id'],
+                            selected_product['id'],
+                            selected_product['name'],
+                            quantity,
+                            total_price
+                        ))
+
+                        # Mise à jour stock
+                        c.execute("UPDATE products SET stock = stock - %s WHERE id = %s", (quantity, selected_product['id']))
+
+                        conn.commit()
+
+                        st.success(f"✅ Vente de {quantity} {selected_product['name']} enregistrée !")
+                        st.balloons()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur lors de l'enregistrement de la vente : {e}")
+        else:
+            st.warning("⚠️ Aucun produit en stock disponible pour la vente")
+
+    # --- Historique des ventes ---
+    with tab2:
+        c.execute("SELECT * FROM sales WHERE user_id=%s ORDER BY date DESC", (user['id'],))
+        sales = [dict(r) for r in c.fetchall()]
+
+        if sales:
+            for sale in sales:
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([2, 1, 1, 0.5])
+                    with col1:
+                        st.write(f"**{sale['product_name']}**")
+                        sale_date = sale.get('date', '')
+                        if sale_date:
+                            st.caption(f"{sale_date.strftime('%Y-%m-%d') if sale_date else 'Date inconnue'}")
+                    with col2:
+                        st.write(f"Quantité: {sale['quantity']}")
+                    with col3:
+                        st.write(format_price(sale['total']))
+                    with col4:
+                        if st.button("↩️", key=f"undo_{sale['id']}"):
+                            try:
+                                # Restitution du stock
+                                c.execute("UPDATE products SET stock = stock + %s WHERE id = %s", (sale['quantity'], sale['product_id']))
+                                # Suppression de la vente
+                                c.execute("DELETE FROM sales WHERE id=%s", (sale['id'],))
+                                conn.commit()
+                                st.success("Vente annulée")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erreur lors de l'annulation : {e}")
+                    st.markdown("<hr>", unsafe_allow_html=True)
+        else:
+            st.info("Aucune vente enregistrée pour le moment")
+
+    conn.close()
 # --- PARAMÈTRES ---
 elif page == "Paramètres":
     st.header("⚙️ Paramètres du compte")
